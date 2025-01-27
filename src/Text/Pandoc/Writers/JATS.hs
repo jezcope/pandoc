@@ -43,7 +43,7 @@ import Text.DocLayout
 import Text.Pandoc.Shared
 import Text.Pandoc.URI
 import Text.Pandoc.Templates (renderTemplate)
-import Text.DocTemplates (Context(..), Val(..))
+import Text.DocTemplates (Context(..), Val(..), toVal)
 import Text.Pandoc.Writers.JATS.References (referencesToJATS)
 import Text.Pandoc.Writers.JATS.Table (tableToJATS)
 import Text.Pandoc.Writers.JATS.Types
@@ -76,41 +76,42 @@ creditNames = M.fromList [
 
 addCreditNames :: Context Text -> Context Text
 addCreditNames context =
-  case getField "authors" context of
-    -- If there is no "authors" key in the context, then we don't have to do
-    -- anything, and just return the context as is
-    Nothing -> context
+  case getField "author" context of
     -- If there is an "authors" key, then we replace the existing value
     -- with one we mutate by running the addCreditNamesToAuthor helper
     -- function on each
-    Just authors -> resetField "authors" (map addCreditNamesToAuthor authors) context
+    Just (ListVal authors) ->
+      resetField "author" (map addCreditNamesToAuthor authors) context
+    -- If there is no "authors" key in the context, then we don't have to do
+    -- anything, and just return the context as is
+    _ -> context
 
-addCreditNamesToAuthor :: Context Text -> Context Text
-addCreditNamesToAuthor context =
+addCreditNamesToAuthor :: Val Text -> Val Text
+addCreditNamesToAuthor val@(MapVal context) =
   case getField "roles" context of
-    -- If there is no "roles" key in the context, then we don't have to bother,
-    -- so just return the context as is
-    Nothing -> context
     -- If there is a "roles" key in the context, then we're going to overwrite it
     -- 1. x = (map addCreditName roles) applies the addCreditName to each role
     -- 2. `resetField "roles" x context` replaces the value of the "roles"
     --    in the context object with x (the thing from step 1)
-    Just roles -> resetField "roles" (map addCreditNameToRole roles) context
+    Just (ListVal roles) ->
+      toVal $ resetField "roles" (map addCreditNameToRole roles) context
+    -- If there is no "roles" key in the context, then we don't have to bother,
+    -- so just return the context as is
+    _ -> val
+addCreditNamesToAuthor val = val
 
 addCreditNameToRole :: Val Text -> Val Text
-addCreditNameToRole val =
-  case val of
-    MapVal ctx ->
-      case getField "credit-name" ctx of
-        Just (_ :: Val Text) -> val
-        Nothing ->
-           case getField "credit-id" ctx of
-             Nothing -> val
-             Just creditId ->
-               case M.lookup creditId creditNames of
-                 Nothing -> val
-                 Just creditName -> MapVal $ resetField "credit-name" creditName ctx
-    _ -> val
+addCreditNameToRole val@(MapVal context) =
+  case getField "credit-name" context of
+    Just (_ :: Val Text) -> val
+    Nothing -> fromMaybe val $ complete context
+  where
+    complete :: Context Text -> Maybe (Val Text)
+    complete ctx = do
+      creditId <- getField "credit-id" ctx
+      creditName <- M.lookup creditId creditNames
+      return $ toVal $ resetField "credit-name" creditName ctx
+addCreditNameToRole val = val
 
 -- | Convert a @'Pandoc'@ document to JATS (Archiving and Interchange
 -- Tag Set.)
