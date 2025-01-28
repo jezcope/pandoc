@@ -90,17 +90,17 @@ addCreditNames context =
   where
     addCreditNamesToAuthor :: Val Text -> Val Text
     addCreditNamesToAuthor val = fromMaybe val $ do
-      MapVal context <- pure val
-      ListVal roles <- getField "roles" context
-      return $ toVal $ resetField "roles" (map addCreditNameToRole roles) context
+      MapVal authorCtx <- pure val
+      ListVal roles <- getField "roles" authorCtx
+      return $ toVal $ resetField "roles" (map addCreditNameToRole roles) authorCtx
 
     addCreditNameToRole :: Val Text -> Val Text
     addCreditNameToRole val = fromMaybe val $ do
-      MapVal context <- pure val
-      guard $ isNothing (getField "credit-name" context :: Maybe (Val Text))
-      creditId <- getField "credit-id" context
+      MapVal roleCtx <- pure val
+      guard $ isNothing (getField "credit-name" roleCtx :: Maybe (Val Text))
+      creditId <- getField "credit-id" roleCtx
       creditName <- M.lookup creditId creditNames
-      return $ toVal $ resetField "credit-name" creditName context
+      return $ toVal $ resetField "credit-name" creditName roleCtx
 
 -- | Convert a @'Pandoc'@ document to JATS (Archiving and Interchange
 -- Tag Set.)
